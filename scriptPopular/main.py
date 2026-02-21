@@ -25,6 +25,7 @@ API KEY CONFIGURATION (Set these as GitHub Secrets):
 
 import os
 import time
+import html
 import requests
 from bs4 import BeautifulSoup
 from google import generativeai
@@ -244,13 +245,16 @@ def initialize_gemini(api_key: str) -> None:
     generativeai.configure(api_key=api_key)
 
 
-def generate_script(articles: list[dict]) -> str:
+def generate_script(articles: list[dict], api_key: str) -> str:
     """
     Generate a professional news script using Gemini AI.
     Enforces 'No Clickbait' and 'Original Headline' rules from PRD.
     """
     print("Generating script with Gemini AI...")
 
+    # Configure Gemini with API key
+    generativeai.configure(api_key=api_key)
+    
     # Initialize Gemini model
     model = generativeai.GenerativeModel("gemini-1.5-flash")
 
@@ -428,7 +432,7 @@ def main():
 
         # Step 3: Generate script with AI
         print(f"\n[Step 3] Generating script with Gemini AI...")
-        script = generate_script(valid_articles)
+        script = generate_script(valid_articles, gemini_api_key)
 
         # Step 4: Send to Telegram
         print(f"\n[Step 4] Sending to Telegram...")
@@ -442,9 +446,9 @@ def main():
 
     except Exception as e:
         print(f"\nFATAL ERROR: {e}")
-        # Optionally send error notification to Telegram
+        # Optionally send error notification to Telegram (escape HTML chars)
         send_to_telegram(
-            f"{str(e)}\n\nPlease check the GitHub Actions logs.",
+            html.escape(str(e)) + "\n\nPlease check the GitHub Actions logs.",
             telegram_bot_token,
             telegram_chat_id,
             is_error=True,
