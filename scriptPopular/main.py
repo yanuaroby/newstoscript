@@ -28,7 +28,6 @@ import time
 import html
 import requests
 from bs4 import BeautifulSoup
-from google import generativeai
 
 # =============================================================================
 # CONFIGURATION
@@ -240,23 +239,12 @@ def scrape_all_articles(articles: list[dict]) -> list[dict]:
 # =============================================================================
 
 
-def initialize_gemini(api_key: str) -> None:
-    """Initialize the Gemini API client."""
-    generativeai.configure(api_key=api_key)
-
-
 def generate_script(articles: list[dict], api_key: str) -> str:
     """
     Generate a professional news script using Gemini AI.
     Enforces 'No Clickbait' and 'Original Headline' rules from PRD.
     """
     print("Generating script with Gemini AI...")
-
-    # Configure Gemini with API key
-    generativeai.configure(api_key=api_key)
-    
-    # Initialize Gemini model (using gemini-1.5-flash-latest for v1beta API)
-    model = generativeai.GenerativeModel("gemini-1.5-flash-latest")
 
     # Build the prompt with strict rules
     system_instruction = """
@@ -302,7 +290,7 @@ CONTENT: {article['content'][:2000] if article['content'] else 'Content not avai
 """
 
     user_prompt = f"""
-Generate a professional TikTok/Reels news script based on these 5 trending articles 
+Generate a professional TikTok/Reels news script based on these 5 trending articles
 from Bloomberg Technoz.
 
 {articles_text}
@@ -314,11 +302,33 @@ Remember:
 - 2-3 minute duration (350-450 words)
 """
 
+    # Call Gemini API directly using requests
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    
+    payload = {
+        "contents": [{
+            "parts": [{
+                "text": user_prompt
+            }]
+        }],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 1024,
+        }
+    }
+    
     try:
-        response = model.generate_content(user_prompt)
-        return response.text
-    except Exception as e:
-        print(f"Error generating script: {e}")
+        response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        result = response.json()
+        
+        if "candidates" in result and len(result["candidates"]) > 0:
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+        else:
+            raise Exception(f"Gemini API returned no candidates: {result}")
+            
+    except requests.RequestException as e:
+        print(f"Error calling Gemini API: {e}")
         raise
 
 

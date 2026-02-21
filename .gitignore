@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# macOS directories
+Library/
+Music/
+Pictures/
+Movies/
+Documents/
+Downloads/
+Desktop/
+.nvm/
+.node/
+.conda/
+.virtualenvs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Qwen
+.qwen/
