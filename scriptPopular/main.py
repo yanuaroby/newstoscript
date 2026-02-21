@@ -28,7 +28,8 @@ import time
 import html
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 # =============================================================================
 # CONFIGURATION
@@ -236,7 +237,7 @@ def scrape_all_articles(articles: list[dict]) -> list[dict]:
 
 
 # =============================================================================
-# AI MODULE (Gemini API)
+# AI MODULE (Gemini API - New google.genai package)
 # =============================================================================
 
 
@@ -248,11 +249,8 @@ def generate_script(articles: list[dict], api_key: str) -> str:
     print("Generating script with Gemini AI...")
     
     try:
-        # Configure Gemini with API key
-        genai.configure(api_key=api_key)
-        
-        # Use the stable model name
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Initialize the new genai client
+        client = genai.Client(api_key=api_key)
         
         # Prepare article data for the prompt
         articles_text = ""
@@ -260,7 +258,6 @@ def generate_script(articles: list[dict], api_key: str) -> str:
             articles_text += f"""
 ARTICLE {i}:
 HEADLINE: {article['title']}
-URL: {article['url']}
 CONTENT: {article['content'][:2000] if article['content'] else 'Content not available'}
 ---
 """
@@ -302,7 +299,11 @@ Tone: Professional. No clickbait.
 Data: {articles_text}
 """
         
-        response = model.generate_content(prompt)
+        # Call Gemini API using the new client
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt
+        )
         
         if response and response.text:
             return response.text
