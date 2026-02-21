@@ -5,6 +5,3 @@
 beautifulsoup4
 lxml
 requests
-
-# Google Gemini AI (new package)
-google-genai
