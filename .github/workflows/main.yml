@@ -1,0 +1,99 @@
+# =============================================================================
+# News-to-Script Automation - GitHub Actions Workflow
+# =============================================================================
+# This workflow runs daily at 06:00 AM WIB (UTC+7)
+# 
+# REQUIRED GITHUB SECRETS (Configure in Repository Settings):
+# -----------------------------------------------------------------------------
+# Go to: Settings > Secrets and variables > Actions > New repository secret
+#
+# 1. GEMINI_API_KEY
+#    - Get from: https://makersuite.google.com/app/apikey
+#    - This is your Google Gemini API key for AI summarization
+#
+# 2. TELEGRAM_BOT_TOKEN
+#    - Get from: @BotFather on Telegram
+#    - Send /newbot command and follow instructions
+#    - Format: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz
+#
+# 3. TELEGRAM_CHAT_ID
+#    - Get from: @userinfobot on Telegram
+#    - Send /start and it will reply with your Chat ID
+#    - Format: 123456789 (numeric)
+# =============================================================================
+
+name: News-to-Script Daily Automation
+
+on:
+  schedule:
+    # Runs at 23:00 UTC daily = 06:00 AM WIB (UTC+7)
+    # Cron format: minute hour day month weekday
+    - cron: '0 23 * * *'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  generate-script:
+    name: Generate and Send News Script
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        working-directory: ./scriptPopular
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Step 4: Validate required secrets
+      - name: Validate environment variables
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "ERROR: GEMINI_API_KEY secret is not set"
+            exit 1
+          fi
+          if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+            echo "ERROR: TELEGRAM_BOT_TOKEN secret is not set"
+            exit 1
+          fi
+          if [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "ERROR: TELEGRAM_CHAT_ID secret is not set"
+            exit 1
+          fi
+          echo "All required secrets are configured"
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      # Step 5: Run the automation script
+      - name: Run News-to-Script automation
+        working-directory: ./scriptPopular
+        run: python main.py
+        env:
+          # ===================================================================
+          # API KEYS - DO NOT MODIFY HERE
+          # These are loaded from GitHub Secrets (configured in repository settings)
+          # ===================================================================
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      # Step 6: Handle failure notification
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Workflow failed! Check the Actions tab for details."
+          echo "The script should have sent an error notification to Telegram."
