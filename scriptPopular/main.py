@@ -28,6 +28,7 @@ import time
 import html
 import requests
 from bs4 import BeautifulSoup
+import google.generativeai as genai
 
 # =============================================================================
 # CONFIGURATION
@@ -245,9 +246,27 @@ def generate_script(articles: list[dict], api_key: str) -> str:
     Enforces 'No Clickbait' and 'Original Headline' rules from PRD.
     """
     print("Generating script with Gemini AI...")
+    
+    try:
+        # Configure Gemini with API key
+        genai.configure(api_key=api_key)
+        
+        # Use the stable model name
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        
+        # Prepare article data for the prompt
+        articles_text = ""
+        for i, article in enumerate(articles, 1):
+            articles_text += f"""
+ARTICLE {i}:
+HEADLINE: {article['title']}
+URL: {article['url']}
+CONTENT: {article['content'][:2000] if article['content'] else 'Content not available'}
+---
+"""
 
-    # Build the prompt with strict rules
-    system_instruction = """
+        # Build the prompt with strict rules
+        prompt = f"""
 You are a professional news script writer for TikTok/Reels financial news content.
 
 CRITICAL RULES - MUST FOLLOW EXACTLY:
@@ -276,60 +295,23 @@ Format the output clearly with:
 - "HOOK:" section
 - "NEWS 1:" through "NEWS 5:" sections (each with headline and summary)
 - "OUTRO:" section
+
+Create a TikTok/Reels script based on these 5 articles. Use the exact headlines. 
+Tone: Professional. No clickbait.
+
+Data: {articles_text}
 """
-
-    # Prepare article data for the prompt
-    articles_text = ""
-    for i, article in enumerate(articles, 1):
-        articles_text += f"""
-ARTICLE {i}:
-HEADLINE: {article['title']}
-URL: {article['url']}
-CONTENT: {article['content'][:2000] if article['content'] else 'Content not available'}
----
-"""
-
-    user_prompt = f"""
-Generate a professional TikTok/Reels news script based on these 5 trending articles
-from Bloomberg Technoz.
-
-{articles_text}
-
-Remember:
-- Use EXACT headlines (no modifications)
-- No clickbait language
-- Professional news anchor tone
-- 2-3 minute duration (350-450 words)
-"""
-
-    # Call Gemini API directly using requests
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    
-    payload = {
-        "contents": [{
-            "parts": [{
-                "text": user_prompt
-            }]
-        }],
-        "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 1024,
-        }
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        result = response.json()
         
-        if "candidates" in result and len(result["candidates"]) > 0:
-            return result["candidates"][0]["content"]["parts"][0]["text"]
+        response = model.generate_content(prompt)
+        
+        if response and response.text:
+            return response.text
         else:
-            raise Exception(f"Gemini API returned no candidates: {result}")
+            return "Error: Gemini returned an empty response."
             
-    except requests.RequestException as e:
-        print(f"Error calling Gemini API: {e}")
-        raise
+    except Exception as e:
+        print(f"Error generating script: {e}")
+        return None
 
 
 # =============================================================================
@@ -337,13 +319,17 @@ Remember:
 # =============================================================================
 
 
-def send_to_telegram(script: str, bot_token: str, chat_id: str, is_error: bool = False) -> bool:
+def send_to_telegram(text: str, bot_token: str, chat_id: str, is_error: bool = False) -> bool:
     """
     Send the generated script to Telegram using the Bot API.
     Returns True on success, False on failure.
     """
+    if not text:
+        print("Skip Telegram: No script content to send.")
+        return False
+    
     print("Sending script to Telegram...")
-
+    
     # Telegram Bot API endpoint
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
@@ -352,13 +338,13 @@ def send_to_telegram(script: str, bot_token: str, chat_id: str, is_error: bool =
         message = f"""
 ❌ <b>Automation Error</b>
 
-{script}
+{html.escape(text)}
 
 Please check the GitHub Actions logs.
 """
     else:
         # Success - send the script (escape HTML in script content)
-        escaped_script = html.escape(script)
+        escaped_script = html.escape(text)
         message = f"""
 📰 <b>NEWS-TO-SCRIPT - Daily Tech News</b>
 📅 {time.strftime('%A, %B %d, %Y')}
@@ -445,6 +431,10 @@ def main():
         print(f"\n[Step 3] Generating script with Gemini AI...")
         script = generate_script(valid_articles, gemini_api_key)
 
+        # Check if script generation succeeded
+        if not script or script.startswith("Error:"):
+            raise Exception(f"Script generation failed: {script}")
+
         # Step 4: Send to Telegram
         print(f"\n[Step 4] Sending to Telegram...")
         success = send_to_telegram(script, telegram_bot_token, telegram_chat_id)
@@ -459,7 +449,7 @@ def main():
         print(f"\nFATAL ERROR: {e}")
         # Optionally send error notification to Telegram (escape HTML chars)
         send_to_telegram(
-            html.escape(str(e)) + "\n\nPlease check the GitHub Actions logs.",
+            str(e) + "\n\nPlease check the GitHub Actions logs.",
             telegram_bot_token,
             telegram_chat_id,
             is_error=True,
