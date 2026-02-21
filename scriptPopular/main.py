@@ -85,33 +85,34 @@ def get_popular_articles() -> list[dict]:
     soup = BeautifulSoup(html, "lxml")
     articles = []
 
-    # Find popular/trending articles
-    # Common selectors for popular sections (try multiple patterns)
-    popular_selectors = [
-        ".popular-posts article",
-        ".popular-posts li",
-        ".trending article",
-        ".trending li",
-        "[class*='popular'] article",
-        "[class*='trending'] article",
-        "aside article",  # Sidebar articles
-    ]
+    # Find the popular section using the correct selector: ul.list-terpopuler > li
+    popular_list = soup.find("ul", class_="list-terpopuler")
+    
+    if not popular_list:
+        # Fallback: try to find any popular/trending section
+        popular_selectors = [
+            ".popular-posts ul",
+            ".trending ul",
+            "[class*='popular'] ul",
+            "[class*='trending'] ul",
+        ]
+        for selector in popular_selectors:
+            popular_list = soup.select_one(selector)
+            if popular_list:
+                break
 
-    article_elements = []
-    for selector in popular_selectors:
-        article_elements = soup.select(selector)
-        if article_elements:
-            break
-
-    if not article_elements:
-        # Fallback: try to find any article links on the page
+    if not popular_list:
+        print("Warning: Could not find popular section, trying fallback...")
+        # Last resort: find all article links
         article_elements = soup.select("article")[:ARTICLE_COUNT]
+    else:
+        article_elements = popular_list.find_all("li", limit=ARTICLE_COUNT)
 
     print(f"Found {len(article_elements)} article elements")
 
-    for element in article_elements[:ARTICLE_COUNT]:
-        # Try to extract title from various possible elements
-        title_tag = element.find(["h2", "h3", "h4", "h5", "h6", "a"], class_=lambda x: x and "title" in x.lower() if x else False)
+    for element in article_elements:
+        # Find the title - it's in h5.title inside the card-box
+        title_tag = element.find("h5", class_="title")
         if not title_tag:
             title_tag = element.find(["h2", "h3", "h4", "h5", "h6"])
         if not title_tag:
@@ -124,7 +125,7 @@ def get_popular_articles() -> list[dict]:
         if not title:
             continue
 
-        # Extract URL
+        # Extract URL - find the anchor tag wrapping the card-box
         link_tag = element.find("a", href=True)
         if not link_tag:
             link_tag = title_tag if title_tag.name == "a" else None
@@ -165,23 +166,23 @@ def scrape_article_content(article_url: str) -> str:
     for tag in soup(["script", "style", "noscript", "iframe", "nav", "footer", "header"]):
         tag.decompose()
 
-    # Try common article content selectors
-    content_selectors = [
-        "article",
-        ".article-content",
-        ".post-content",
-        ".entry-content",
-        "[class*='article'] .content",
-        "[class*='post'] .content",
-        ".content",
-        "main",
-    ]
-
-    content_tag = None
-    for selector in content_selectors:
-        content_tag = soup.select_one(selector)
-        if content_tag:
-            break
+    # Bloomberg Technoz specific: content is in div.detail-in
+    content_tag = soup.find("div", class_="detail-in")
+    
+    if not content_tag:
+        # Fallback selectors
+        content_selectors = [
+            ".article-content",
+            ".post-content",
+            ".entry-content",
+            "article",
+            ".content",
+            "main",
+        ]
+        for selector in content_selectors:
+            content_tag = soup.select_one(selector)
+            if content_tag:
+                break
 
     if not content_tag:
         # Fallback: get all paragraphs
